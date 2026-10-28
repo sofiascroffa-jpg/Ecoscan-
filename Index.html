@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoScan IA</title>
+  <style>
+    :root {
+      --primary: #2e7d32;
+      --primary-hover: #1b5e20;
+      --bg: #f4f9f4;
+      --card-bg: #ffffff;
+      --text: #2c3e50;
+      --subtext: #666;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 20px 15px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .app-card {
+      background: var(--card-bg);
+      width: 100%;
+      max-width: 420px;
+      padding: 28px 24px;
+      border-radius: 24px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+      border: 1px solid rgba(46, 125, 50, 0.12);
+      text-align: center;
+    }
+
+    .icon-badge {
+      width: 60px;
+      height: 60px;
+      background: #e8f5e9;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin: 0 auto 16px;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      color: #1b5e20;
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    p {
+      color: var(--subtext);
+      font-size: 14px;
+      line-height: 1.5;
+      margin: 0 0 20px;
+    }
+
+    #webcam-container {
+      width: 100%;
+      height: 280px;
+      background: #000;
+      border-radius: 18px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      position: relative;
+      box-shadow: inset 0 0 12px rgba(0,0,0,0.2);
+    }
+
+    #webcam-container canvas {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover;
+    }
+
+    .placeholder-text {
+      color: #81c784;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 0 20px;
+    }
+
+    .btn-action {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      width: 100%;
+      padding: 16px;
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(46,125,50,0.25);
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn-action:active {
+      transform: scale(0.98);
+      background: var(--primary-hover);
+    }
+
+    #label-container {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .result-row {
+      background: #f8faf8;
+      border: 1px solid #e0e0e0;
+      padding: 10px 14px;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: #2e7d32;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-card">
+  <div class="icon-badge">♻️</div>
+  <h2>EcoScan IA</h2>
+  <p>Escaneá tus materiales para saber cómo reciclarlos correctamente.</p>
+
+  <div id="webcam-container">
+    <span class="placeholder-text" id="status">Tocá el botón para encender la cámara</span>
+  </div>
+
+  <button class="btn-action" id="start-btn" onclick="init()">📷 Iniciar Cámara</button>
+
+  <div id="label-container"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+  const URL = "https://teachablemachine.withgoogle.com/models/6adf468d_/";
+  let model, webcam, labelContainer, maxPredictions;
+
+  async function init() {
+    const btn = document.getElementById("start-btn");
+    const status = document.getElementById("status");
+    
+    btn.disabled = true;
+    btn.innerText = "Cargando modelo...";
+    status.innerText = "Iniciando cámara...";
+
+    try {
+      model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+      maxPredictions = model.getTotalClasses();
+
+      webcam = new tmImage.Webcam(320, 280, true);
+      await webcam.setup({ facingMode: "environment" });
+      await webcam.play();
+      
+      window.requestAnimationFrame(loop);
+
+      document.getElementById("webcam-container").innerHTML = "";
+      document.getElementById("webcam-container").appendChild(webcam.canvas);
+      
+      labelContainer = document.getElementById("label-container");
+      labelContainer.innerHTML = "";
+      for (let i = 0; i < maxPredictions; i++) {
+        const row = document.createElement("div");
+        row.className = "result-row";
+        labelContainer.appendChild(row);
+      }
+
+      btn.style.display = "none";
+    } catch (err) {
+      alert("No se pudo acceder a la cámara. Asegúrate de otorgar los permisos en Safari.");
+      btn.disabled = false;
+      btn.innerText = "Reintentar";
+      status.innerText = "Error al conectar la cámara";
+    }
+  }
+
+  async function loop() {
+    webcam.update();
+    await predict();
+    window.requestAnimationFrame(loop);
+  }
+
+  async function predict() {
+    const prediction = await model.predict(webcam.canvas);
+    for (let i = 0; i < maxPredictions; i++) {
+      const className = prediction[i].className;
+      const prob = (prediction[i].probability * 100).toFixed(0);
+      labelContainer.childNodes[i].innerHTML = `<span>${className}</span><span>${prob}%</span>`;
+    }
+  }
+</script>
+
+</body>
+</html>
